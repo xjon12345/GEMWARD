@@ -46,11 +46,11 @@ html,body{height:100%;width:100%;overflow:hidden}body{height:100dvh;display:flex
 <div id="relicmodal" class="modal" role="dialog" aria-modal="true" aria-label="เลือก Relic"><div class="relicbox"><div class="eyebrow">A GIFT FROM THE GROVE</div><h2>เลือกวัตถุโบราณ 1 ชิ้น</h2><p class="muted">รางวัลหลังชนะบอส · มีผลกับเกมนี้ตลอดการเดินทาง</p><div id="relicChoices" class="relicchoices"></div></div></div><div id="scoresmodal" class="modal" role="dialog" aria-modal="true" aria-label="ไฮสกอร์ Endless"><div class="smallbox"><div class="modalheading"><div><div class="eyebrow">ENDLESS RECORDS</div><h2>Hall of Wardens</h2></div><button id="closeScores" class="closebtn" aria-label="ปิดไฮสกอร์">✕</button></div><div id="scoreList"></div><p class="muted scorelocal">บันทึกบนเบราว์เซอร์นี้ แยกตามความยาก<br>เรียงจากเวฟที่ผ่านสูงสุด แล้วตามคะแนน</p></div></div><script>// GEMWARD balance.js — standalone, no deps. All tunables live in T.
 (function () {
   const T = {
-    waves: 20, startGold: 420, lives: 25, pathLen: 1900, baseSpeed: 45,
-    hpLinear: 0.15, hpQuad: 0.014,       // hp mult = polynomial growth × visible late-wave ramp
+    waves: 20, startGold: 380, lives: 25, pathLen: 1900, baseSpeed: 45,
+    hpLinear: 0.19, hpQuad: 0.012,       // hp mult = polynomial growth × visible late-wave ramp
     armorPerWave: 0.5,                  // flat armor added per wave to armored/boss
     rewardGrowth: 0.035,                 // reward mult = 1 + g(w-1), slower than HP on purpose
-    countBase: 7, countPerWave: 1.5,     // enemies per wave before difficulty
+    countBase: 7, countPerWave: 1.6,     // enemies per wave before difficulty
     intervalStart: 1.0, intervalMin: 0.38, intervalStep: 0.03,
     bonusBase: 20, bonusPerWave: 4, bossBonusMin: 80,
     sellRate: 0.7,                       // < 1 always → selling can never create gold
@@ -64,12 +64,12 @@ html,body{height:100%;width:100%;overflow:hidden}body{height:100dvh;display:flex
     armored: [110, 34,   5,    9,     2,   0,    0.1 ],
     swarm:   [ 16, 56,   0,    1,     1,   0,    0   ],
     shaman:  [ 80, 40,   1,   11,     2,   6,    0.2 ], // regen hp/s; game may apply it as aura to neighbours
-    boss:    [700, 30,   4,   90,     8,   4,    0.5 ],
+    boss:    [640, 30,   4,  110,     5,   4,    0.5 ],
   };
   const DIFF = {
-    easy:   { hp: 0.68, speed: 0.95, count: 0.85, reward: 1.15, startGold: 480, lives: 30, sellRate: 0.80, bonus: 1.2 },
-    normal: { hp: 1.00, speed: 1.00, count: 1.00, reward: 1.00, startGold: 420, lives: 25, sellRate: 0.70, bonus: 1.0 },
-    hard:   { hp: 1.15, speed: 1.07, count: 1.15, reward: 0.90, startGold: 380, lives: 20, sellRate: 0.60, bonus: 0.9 },
+    easy:   { hp: 0.72, speed: 0.95, count: 0.90, reward: 1.15, startGold: 480, lives: 30, sellRate: 0.80, bonus: 1.2 },
+    normal: { hp: 1.00, speed: 1.00, count: 1.00, reward: 1.00, startGold: 380, lives: 25, sellRate: 0.70, bonus: 1.0 },
+    hard:   { hp: 1.30, speed: 1.07, count: 1.18, reward: 0.92, startGold: 380, lives: 20, sellRate: 0.60, bonus: 0.95 },
   };
   const D = (d) => DIFF[d] || DIFF.normal;
   const clampW = (w) => Math.max(1, Math.min(T.waves, w | 0));
@@ -77,12 +77,12 @@ html,body{height:100%;width:100%;overflow:hidden}body{height:100dvh;display:flex
 
   function enemyStats(wave, kind, difficulty) {
     const w = clampW(wave), d = D(difficulty), k = KINDS[kind] || KINDS.grunt, n = w - 1;
-    const lateRamp = 1 + Math.max(0,w-8)*0.055;
+    const lateRamp = 1 + Math.max(0,w-8)*0.045;
     const hpMult = (1 + T.hpLinear * n + T.hpQuad * n * n) * d.hp * lateRamp;
     const armored = kind === 'armored' || kind === 'boss';
     return {
       kind: KINDS[kind] ? kind : 'grunt',
-      hp: Math.round(k[0] * hpMult * (kind === 'boss' ? 1 + 0.20 * (w / 5 - 1) : 1)),
+      hp: Math.round(k[0] * hpMult * (kind === 'boss' ? 1 + 0.06 * (w / 5 - 1) : 1)),
       speed: +(k[1] * d.speed * (1 + 0.004 * n)).toFixed(1),       // +7.6% by w20
       armor: +(k[2] + (armored ? T.armorPerWave * n : 0)).toFixed(1), // flat dmg reduction, min 20% dmg dealt
       reward: Math.max(1, Math.round(k[3] * (1 + T.rewardGrowth * n) * d.reward)),
@@ -115,7 +115,7 @@ html,body{height:100%;width:100%;overflow:hidden}body{height:100dvh;display:flex
     enemies.forEach((k) => (buckets[k] = buckets[k] || []).push(k));
     while (mixed.length < enemies.length)
       for (const k in buckets) if (buckets[k].length) mixed.push(buckets[k].pop());
-    if (isBoss(w)) for (let i = 0; i < Math.ceil(w / 10); i++) mixed.push('boss'); // 1,1,2,2 bosses last
+    if (isBoss(w)) for (let i = 0; i < (w >= 20 ? 2 : 1); i++) mixed.push('boss'); // 1,1,1,2 bosses last
     const interval = Math.max(T.intervalMin, T.intervalStart - T.intervalStep * (w - 1));
     let bonus = Math.round((T.bonusBase + T.bonusPerWave * w) * d.bonus);
     if (isBoss(w)) bonus = Math.max(bonus, Math.round(T.bossBonusMin * d.bonus));
