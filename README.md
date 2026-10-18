@@ -79,3 +79,7 @@ Relic รวม 50 ชนิด (เพิ่ม 38 ภาพใหม่) ร�
 ## v26
 Fourth socket affix reroll scrolls (1% normal / 15% boss), related tower portraits on Relics, evolution stat comparison, and separate private owner audit logs with speed telemetry. Existing leaderboard scores and ruleset are preserved.
 
+
+## v27
+Six towers per base type; four full aura recipients with player priorities and 20% bonuses for others; native Ranger splash and 2% mini stun; socket drills increased to 2% normal / 20% boss. Existing Highscores retained.
+
