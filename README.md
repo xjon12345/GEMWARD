@@ -83,3 +83,7 @@ Fourth socket affix reroll scrolls (1% normal / 15% boss), related tower portrai
 ## v27
 Six towers per base type; four full aura recipients with player priorities and 20% bonuses for others; native Ranger splash and 2% mini stun; socket drills increased to 2% normal / 20% boss. Existing Highscores retained.
 
+
+## v28
+Visible free placement unlock and wave-20 notice, beginner-friendly starter pads, version checks from version.json with new-run update lock, and official YouTube music player with credits and volume. Highscores unchanged.
+
