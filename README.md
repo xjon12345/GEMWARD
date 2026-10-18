@@ -75,3 +75,7 @@ Gem รวม 22 ชนิดพร้อมภาพใหม่ ช่อง 1
 ## อัปเดต v25
 Relic รวม 50 ชนิด (เพิ่ม 38 ภาพใหม่) รางวัลและรีเฟรชไม่เสนอชนิดที่มีแล้ว อัปขั้นเดิมได้ รีเฟรชได้ 8 ครั้งต่อรางวัล: ครั้งที่ 1–5 ราคา 150 ทอง ครั้งที่ 6–8 ราคา 500 ทอง เพิ่มคำสั่งเจ้าของข้ามเวฟและเสกไอเทม ใช้หลังยืนยันตัวตนบนเว็บหลัก รันทดสอบไม่ติดอันดับ Highscore เดิมและกติกา grove-v21 คงเดิม
 
+
+## v26
+Fourth socket affix reroll scrolls (1% normal / 15% boss), related tower portraits on Relics, evolution stat comparison, and separate private owner audit logs with speed telemetry. Existing leaderboard scores and ruleset are preserved.
+
