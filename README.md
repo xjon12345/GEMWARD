@@ -95,3 +95,7 @@ Owner-supplied The Warden's Song MP3, by Scott Buckley. Native looping music sta
 ## v30
 Illustrated searchable handbook for all systems (? / H), actionable menu badges, and optional update notices with no new-run lock. Legacy v29 clients do not receive a new forced-update version. Existing Highscores retained.
 
+
+## v31
+Endless enemy speed growth capped at +20% relative to wave 20, reached on wave 49. Optional updates and existing Highscores preserved.
+
