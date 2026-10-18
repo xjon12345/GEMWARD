@@ -87,3 +87,7 @@ Six towers per base type; four full aura recipients with player priorities and 2
 ## v28
 Visible free placement unlock and wave-20 notice, beginner-friendly starter pads, version checks from version.json with new-run update lock, and official YouTube music player with credits and volume. Highscores unchanged.
 
+
+## v29
+Owner-supplied The Warden's Song MP3, by Scott Buckley. Native looping music starts on first interaction; hidden controls keep playing; volume and off preference persist. Original credits remain in game. Highscores unchanged.
+
