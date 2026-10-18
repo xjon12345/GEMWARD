@@ -91,3 +91,7 @@ Visible free placement unlock and wave-20 notice, beginner-friendly starter pads
 ## v29
 Owner-supplied The Warden's Song MP3, by Scott Buckley. Native looping music starts on first interaction; hidden controls keep playing; volume and off preference persist. Original credits remain in game. Highscores unchanged.
 
+
+## v30
+Illustrated searchable handbook for all systems (? / H), actionable menu badges, and optional update notices with no new-run lock. Legacy v29 clients do not receive a new forced-update version. Existing Highscores retained.
+
