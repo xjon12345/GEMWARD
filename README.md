@@ -99,3 +99,4 @@ Illustrated searchable handbook for all systems (? / H), actionable menu badges,
 ## v31
 Endless enemy speed growth capped at +20% relative to wave 20, reached on wave 49. Optional updates and existing Highscores preserved.
 
+`nVersion 32: touch-only mobile controls, collapsible menus, unobstructed battlefield, responsive dialogs. Desktop layout and existing scores preserved.
