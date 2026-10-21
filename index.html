@@ -1240,6 +1240,33 @@ G.Game=class extends Base{
 };
 })();
 
+/* Shared, saveable automation: normal unlock and skill rules remain authoritative. */
+(()=>{
+const G=globalThis.GW;
+G.planAutoNodes=function(game,branch,start,end){
+ const nodes=G.NODES.filter(n=>n.branch===branch),byId=new Map(nodes.map(n=>[n.id,n]));
+ if(!byId.has(start)||!byId.has(end))return {error:'เลือกต้นทางและปลายทางในสายเดียวกัน',order:[]};
+ const queue=[[start]],seen=new Set([start]);let path;
+ while(queue.length){const p=queue.shift(),last=p[p.length-1];if(last===end){path=p;break;}for(const n of nodes)if([...n.requires,...n.requiresAny].includes(last)&&!seen.has(n.id)){seen.add(n.id);queue.push([...p,n.id]);}}
+ if(!path)return {error:'ปลายทางต้องอยู่ถัดจากต้นทางตามเส้นเชื่อม เลือกจุดใหม่',order:[]};
+ const route=new Set(path),done=new Set(game.nodes),order=[],visiting=new Set();
+ function add(id){if(done.has(id))return;if(visiting.has(id))throw Error('วงเชื่อมผิดปกติ');const n=byId.get(id);if(!n)throw Error('มีเงื่อนไขข้ามสาย');visiting.add(id);n.requires.forEach(add);
+  if(n.requiresAny.length&&!n.requiresAny.some(p=>done.has(p))){const options=n.requiresAny;const choice=options.find(p=>route.has(p))||options[0];add(choice);}
+  visiting.delete(id);done.add(id);order.push(id);
+ }
+ try{path.forEach(add);}catch(e){return {error:e.message,order:[]};}
+ return {order,path,error:null};
+};
+const Base=G.Game;
+G.Game=class extends Base{
+ constructor(...args){super(...args);this.autoNodes={enabled:false,branch:'flame',start:'embers',end:'embers',order:[],status:'off'};this.petAuto=false;}
+ configureAutoNodes(branch,start,end,enabled=true){const plan=G.planAutoNodes(this,branch,start,end);if(plan.error)return plan;this.autoNodes={enabled,branch,start,end,order:plan.order,status:enabled?'waiting':'off'};this.processAutoNodes();return plan;}
+ processAutoNodes(){const a=this.autoNodes;if(!a?.enabled||this.ended)return;for(const id of a.order){if(this.has(id))continue;if(this.points<1){a.status='waiting';return;}if(!this.unlock(id)){a.enabled=false;a.status='blocked';return;}}a.enabled=false;a.status='complete';}
+ refundNodes(...args){const ok=super.refundNodes(...args);if(ok){this.autoNodes.enabled=false;this.autoNodes.status='off';}return ok;}
+ step(dt){this.processAutoNodes();if(this.petAuto&&this.enemies.some(e=>!e.dead)&&this.canCastPet())this.castPet();super.step(dt);this.processAutoNodes();}
+};
+})();
+
 (()=>{const G=globalThis.GW,skip=new Set(['effects','fields','skillFields','enemies','pending','plan','_modCache','pet','petUpgrades','petRewardResult','petSkillState','petCastResult','clownEvent','thiefRaid']);
 G.captureCloudState=function(g){if(g.running||g.lives<=0||g.wave<1)return null;const data={};for(const [k,v] of Object.entries(g))if(!skip.has(k)&&typeof v!=='function')data[k]=v instanceof Set?[...v]:v;data.effects=[];data.fields=[];data.skillFields=[];data.enemies=[];data.pending=[];return JSON.parse(JSON.stringify({version:1,game:data}));};
 G.restoreCloudState=function(snapshot){if(snapshot?.version!==1||!snapshot.game)throw Error('รูปแบบเซฟไม่รองรับ');const data=snapshot.game,g=new G.Game(data.difficulty),allowed=new Set([...Object.keys(g),'socketDrills','socketDrillsFound','assisted','ownerWaveSkipped']);for(const [k,v] of Object.entries(data)){if(!allowed.has(k)||skip.has(k)||['nodes','relics'].includes(k))continue;g[k]=v;}g.nodes=new Set(data.nodes);g.relics=new Set(data.relics);g.plan=globalThis.GW_BALANCE.wavePlan(g.wave,g.difficulty);g._modCache=null;g.running=false;return g;};})();
@@ -1342,6 +1369,16 @@ function frame(time){const dt=Math.min(.06,(time-last)/1000||.016);last=time;if(
 $('dpsToggle').onclick=()=>setDamageVisible(!showDamage);$('closeDamage').onclick=()=>setDamageVisible(false);document.querySelectorAll('[data-sort]').forEach(b=>b.onclick=()=>{damageSort=b.dataset.sort;renderDamagePanel();});ui(true);openModal('helpmode');requestAnimationFrame(frame);
 </script><script>/* Lay out the real prerequisite DAG; this never changes IDs, costs or unlock rules. */
 globalThis.GW_NODE_LAYOUT=function(branches,nodes,mode){
+ if(mode==='all'){
+ const positions=new Map(),tiles=[],size=3400,c=size/2;
+ branches.forEach((b,index)=>{
+ const angle=-Math.PI/2+index*Math.PI*2/branches.length,items=b.nodes.map(([id])=>nodes.find(n=>n.id===id)),byId=new Map(items.map(n=>[n.id,n])),depths=new Map();
+ function depth(n){if(depths.has(n.id))return depths.get(n.id);const parents=[...n.requires,...n.requiresAny].map(id=>byId.get(id)).filter(Boolean),d=parents.length?1+Math.max(...parents.map(depth)):0;depths.set(n.id,d);return d;}
+ const rows=new Map();items.forEach(n=>{const d=depth(n);if(!rows.has(d))rows.set(d,[]);rows.get(d).push(n);});
+ for(const[d,row]of rows)row.forEach((n,i)=>{const radius=360+d*87,a=angle+(i-(row.length-1)/2)*.072;positions.set(n.id,{x:c+Math.cos(a)*radius,y:c+Math.sin(a)*radius,depth:d,angle:a,radius});});
+ tiles.push({branch:b,x:c+Math.cos(angle)*1620,y:c+Math.sin(angle)*1620,angle});
+ });return{width:size,height:size,positions,tiles,all:true};
+ }
  const all=mode==='all',chosen=all?branches:branches.filter(b=>b.id===mode),positions=new Map(),tiles=[];
  let height=0;
  for(const b of chosen){
@@ -1396,9 +1433,10 @@ renderTree=function(){
  const svg=$('constellation'),layout=GW_NODE_LAYOUT(BRANCHES,NODES,nodeBranch),all=layout.all;svg.dataset.graphWidth=layout.width;svg.dataset.graphHeight=layout.height;svg.setAttribute('viewBox','0 0 '+layout.width+' '+layout.height);
  const ancestors=new Set();function visit(id){if(ancestors.has(id))return;ancestors.add(id);const n=NODES.find(n=>n.id===id);if(n)for(const p of [...n.requires,...n.requiresAny])visit(p);}visit(selectedNode);
  let html='<defs><filter id="starglow"><feGaussianBlur stdDeviation="4"/></filter></defs>';
- for(const tile of layout.tiles){const b=tile.branch;if(all)html+='<rect class="nodeSchoolTile" x="'+tile.x+'" y="'+tile.y+'" width="'+tile.width+'" height="'+tile.height+'" rx="16" fill="#18342877" stroke="#6c825355"/><text class="nodeTileTitle" x="'+(tile.x+tile.width/2)+'" y="'+(tile.y+27)+'" text-anchor="middle" fill="'+b.color+'" font-size="20">'+esc(b.th)+'</text>';
+ if(all){for(const r of [330,690,1050,1410])html+='<circle class="atlasOrbit" cx="1700" cy="1700" r="'+r+'" fill="none" stroke="#71875a33" stroke-width="2"/>';html+='<g class="atlasCore"><circle cx="1700" cy="1700" r="220" fill="#163d31" stroke="#cbb36c" stroke-width="4"/><text x="1700" y="1690" text-anchor="middle" fill="#efdb9b" font-size="44">GEMWARD</text><text x="1700" y="1750" text-anchor="middle" fill="#a9c4ad" font-size="27">600 NODES · 20 สายพลัง</text></g>';}
+ for(const tile of layout.tiles){const b=tile.branch;if(all)html+='<g class="nodeSchoolTile"><text class="nodeTileTitle" x="'+tile.x+'" y="'+tile.y+'" text-anchor="middle" fill="'+b.color+'" font-size="25">'+esc(b.th)+'</text></g>';
   for(const [id]of b.nodes){const n=NODES.find(n=>n.id===id),p=layout.positions.get(id),owned=game.has(id),available=game.canUnlock(n),active=selectedNode===id;
-   for(const parent of [...n.requires,...n.requiresAny]){const q=layout.positions.get(parent);if(!q)continue;const start=q.y+(all?11:42),end=p.y-(all?11:42),mid=(start+end)/2,route='M '+q.x+' '+start+' V '+mid+' H '+p.x+' V '+end;html+='<path class="nodeLink '+(n.requiresAny.includes(parent)?'either ':'')+(ancestors.has(id)&&ancestors.has(parent)?'onPath ':'')+(owned?'owned':'')+'" data-from="'+parent+'" data-to="'+id+'" d="'+route+'" fill="none"/>';}
+   for(const parent of [...n.requires,...n.requiresAny]){const q=layout.positions.get(parent);if(!q)continue;const start=q.y+(all?11:42),end=p.y-(all?11:42),mid=(start+end)/2,route=all?'M '+q.x+' '+q.y+' L '+p.x+' '+p.y:'M '+q.x+' '+start+' V '+mid+' H '+p.x+' V '+end;html+='<path class="nodeLink '+(n.requiresAny.includes(parent)?'either ':'')+(ancestors.has(id)&&ancestors.has(parent)?'onPath ':'')+(owned?'owned':'')+'" data-from="'+parent+'" data-to="'+id+'" d="'+route+'" fill="none"/>';}
    const cx=p.x-(all?0:72),r=all?10:22;
    html+='<g class="node '+(ancestors.has(id)?'pathAncestor':'')+'" role="button" tabindex="0" data-node="'+id+'"><title>'+esc(n.name+' · '+n.desc)+'</title>';
    if(!all)html+='<rect class="nodeCard" x="'+(p.x-107)+'" y="'+(p.y-42)+'" width="214" height="84" rx="10"/>';
@@ -1793,7 +1831,7 @@ function renderSchools(){schoolNav.innerHTML='<button data-school="all" class="'
 renderNodeSearch=function(){const result=$('nodeSearchResults');result.hidden=!nodeQuery;if(!nodeQuery){$('nodeSearchCount').textContent='20 สาย · 600 โหนด';result.replaceChildren();return;}const found=NODES.filter(n=>{const b=BRANCHES.find(b=>b.id===n.branch),g=GW_NODE_GUIDE.explain(n);return[n.name,n.desc,b.name,b.th,...g.types.map(t=>TOWERS[t].name),...g.lines.map(l=>l.text),...g.conditions].join(' ').toLowerCase().includes(nodeQuery);});$('nodeSearchCount').textContent='พบ '+found.length+' โหนด';result.innerHTML=found.map(n=>'<button data-search-node="'+n.id+'">'+schoolPicture(n.branch,34)+'<span><b>'+esc(n.name)+'</b><small>'+esc(GW_NODE_GUIDE.explain(n).lines[0].text)+'</small></span></button>').join('')||'<p>ไม่พบโหนด ลองค้นชื่อป้อม เช่น เรนเจอร์ หรือพลัง เช่น สโลว์</p>';result.querySelectorAll('[data-search-node]').forEach(b=>b.onclick=()=>chooseAtlasNode(b.dataset.searchNode));};
 renderTree=function(){atlasOriginalTree();renderSchools();const svg=$('constellation'),overview=nodeBranch==='all',ns='http://www.w3.org/2000/svg';
  const edges=document.createElementNS(ns,'g');edges.classList.add('nodeEdges');svg.querySelectorAll(':scope > line,:scope > path').forEach(line=>edges.appendChild(line));svg.querySelector('defs').after(edges);
- for(const g of svg.querySelectorAll('[data-node]')){const n=NODES.find(n=>n.id===g.dataset.node),body=g.querySelector('.nodebody'),x=+body.getAttribute('cx'),y=+body.getAttribute('cy'),size=overview?16:n.keystone?46:40;g.classList.add('illustratedNode');g.classList.toggle('owned',game.has(n.id));g.classList.toggle('available',game.canUnlock(n)&&!game.has(n.id));g.classList.toggle('selected',selectedNode===n.id);g.setAttribute('aria-label',n.name+' · '+(game.has(n.id)?'ปลดล็อกแล้ว':game.canUnlock(n)?'พร้อมเชื่อม':'ยังต้องมีโหนดก่อนหน้า'));g.querySelector('title').textContent=n.name+' · '+GW_NODE_GUIDE.explain(n).lines.map(l=>l.text).join(' · ');g.querySelector('text')?.remove();const image=document.createElementNS(ns,'image');image.setAttribute('href',NODE_SCHOOL_ART[n.branch]);image.setAttribute('x',x-size/2);image.setAttribute('y',y-size/2);image.setAttribute('width',size);image.setAttribute('height',size);image.setAttribute('pointer-events','none');g.appendChild(image);body.setAttribute('r',size/2+3);if(!overview){const badge=document.createElementNS(ns,'text');badge.setAttribute('x',x-size*.50);badge.setAttribute('y',y-size*.65);badge.setAttribute('class','nodeStateBadge');badge.textContent=game.has(n.id)?'◆':n.keystone?'✦':n.tier+1;g.appendChild(badge);}}
+ for(const g of svg.querySelectorAll('[data-node]')){const n=NODES.find(n=>n.id===g.dataset.node),body=g.querySelector('.nodebody'),x=+body.getAttribute('cx'),y=+body.getAttribute('cy'),size=overview?24:n.keystone?46:40;g.classList.add('illustratedNode');g.classList.toggle('owned',game.has(n.id));g.classList.toggle('available',game.canUnlock(n)&&!game.has(n.id));g.classList.toggle('selected',selectedNode===n.id);g.setAttribute('aria-label',n.name+' · '+(game.has(n.id)?'ปลดล็อกแล้ว':game.canUnlock(n)?'พร้อมเชื่อม':'ยังต้องมีโหนดก่อนหน้า'));g.querySelector('title').textContent=n.name+' · '+GW_NODE_GUIDE.explain(n).lines.map(l=>l.text).join(' · ');g.querySelector('text')?.remove();const image=document.createElementNS(ns,'image');image.setAttribute('href',NODE_SCHOOL_ART[n.branch]);image.setAttribute('x',x-size/2);image.setAttribute('y',y-size/2);image.setAttribute('width',size);image.setAttribute('height',size);image.setAttribute('pointer-events','none');g.appendChild(image);body.setAttribute('r',size/2+3);if(!overview){const badge=document.createElementNS(ns,'text');badge.setAttribute('x',x-size*.50);badge.setAttribute('y',y-size*.65);badge.setAttribute('class','nodeStateBadge');badge.textContent=game.has(n.id)?'◆':n.keystone?'✦':n.tier+1;g.appendChild(badge);}}
  if(!overview)svg.querySelectorAll(':scope > text').forEach((el,i)=>{const image=svg.querySelectorAll('[data-node] image')[i];el.setAttribute('font-size','13');el.setAttribute('font-weight','600');el.setAttribute('y',+image.getAttribute('y')+(+image.getAttribute('height'))+16);});
  const n=NODES.find(n=>n.id===selectedNode),b=BRANCHES.find(b=>b.id===n.branch),guide=GW_NODE_GUIDE.explain(n),owned=game.has(n.id),available=game.canUnlock(n),parents=[...n.requires,...n.requiresAny];
  const affected=guide.types.length?'<div class="nodeAffectedGrid">'+guide.types.map(type=>'<article><img src="'+towerArtURL(type)+'" width="60" height="60" alt="'+esc(TOWERS[type].name)+'"><span>'+TOWERS[type].name+'</span></article>').join('')+'</div><small class="nodeScopeNote">รวมร่างวิวัฒนาการของสายที่แสดง · บางผลต้องมี Gem / สถานะตามเงื่อนไขด้านล่าง</small>':'<div class="nodeAccountEffect">◈ มีผลกับผู้เล่น / ผลึก / ศัตรู<br><small>ไม่ต้องสร้างป้อมชนิดใดเป็นพิเศษ</small></div>';
@@ -1964,7 +2002,7 @@ async function loadAuditRun(id,more=false){if(auditDetailBusy)return;auditDetail
 
 </script><script>
 /* Visible free placement, beginner pads, and non-disruptive release notifications. */
-const CURRENT_RELEASE=41;
+const CURRENT_RELEASE=42;
 const freePlacementHud=document.createElement('button');freePlacementHud.id='freePlacementHud';freePlacementHud.type='button';freePlacementHud.hidden=true;freePlacementHud.innerHTML='<span class="freePlacementSigil">✥</span><span><b>ปลดล็อกพื้นที่อิสระ</b><small>หลังเวฟ 20 · จ่ายครั้งเดียว 3,000 ทอง</small></span>';scene.appendChild(freePlacementHud);
 const freePlacementModal=document.createElement('div');freePlacementModal.id='freePlacementModal';freePlacementModal.className='modal';freePlacementModal.setAttribute('role','dialog');freePlacementModal.setAttribute('aria-modal','true');freePlacementModal.innerHTML='<div class="smallbox freePlacementBox"><header class="modalheading"><h2>✥ พื้นที่อิสระ</h2><button id="closeFreePlacement" class="closebtn" aria-label="ปิด">✕</button></header><p>ผ่านเวฟ 20 แล้ว! เล่น Endless ต่อเพื่อปลดล็อกระบบนี้</p><ul><li>จ่ายครั้งเดียว 3,000 ทองต่อรัน</li><li>วางและย้ายป้อมได้ทั่วสนามระหว่างเวฟ</li><li>ดับเบิลคลิกป้อมเพื่อย้าย · Gem และขั้นป้อมยังอยู่</li><li>ห้ามวางบนทางเดิน ซ้อนป้อม หรือชิดผลึก</li><li>เริ่มต้นรวม 20 ป้อม · ชนิดละ 6 ป้อม<br>ใช้คัมภีร์สัตว์เลี้ยงขยายได้รวม 25 ป้อม · ชนิดละ 14 ป้อม</li></ul><p id="freePlacementWallet"></p><button id="buyFreePlacement" class="goldbtn full">ปลดล็อก · 3,000 ทอง</button></div>';scene.appendChild(freePlacementModal);
 function refreshFreePlacement(){const ready=game.campaignCleared||game.endless;freePlacementHud.hidden=!ready;freePlacementHud.classList.toggle('unlocked',game.freePlacement);freePlacementHud.querySelector('b').textContent=game.freePlacement?'พื้นที่อิสระ · ปลดล็อกแล้ว':'ปลดล็อกพื้นที่อิสระ · 3,000 ทอง';freePlacementHud.querySelector('small').textContent=game.freePlacement?'ดับเบิลคลิกป้อมเพื่อย้ายระหว่างเวฟ':!game.endless?'ผ่านเวฟ 20 แล้ว · เล่น Endless ต่อเพื่อใช้งาน':game.running?'ปลดล็อกได้ช่วงพักเวฟ':'วางและย้ายป้อมได้ทั่วสนาม · จ่ายครั้งเดียว';$('freePlacementWallet').textContent='ทองคงเหลือ '+num(game.gold)+' / ต้องใช้ 3,000';const buy=$('buyFreePlacement');buy.disabled=!game.endless||game.running||game.ended||game.freePlacement||game.gold<3000;buy.textContent=game.freePlacement?'ปลดล็อกแล้ว':!game.endless?'เข้าสู่ Endless ก่อน':game.running?'รอจบเวฟเพื่อปลดล็อก':game.gold<3000?'ทองยังไม่พอ · ต้องใช้ 3,000':'ปลดล็อก · 3,000 ทอง';}
@@ -2226,6 +2264,30 @@ $('redeemForm').onsubmit=async event=>{
  finally{busy=false;render();if(onlinePlayer?.id===id)await check();}
 };
 window.GEMWARD_REDEEM={open};render();
+})();
+
+(()=>{
+const style=document.createElement('style');style.textContent=`
+.autoNodePanel{border:1px solid #a38b4b;border-radius:12px;background:linear-gradient(135deg,#253e29,#10251e);padding:12px;margin-bottom:16px;color:#e7dfbc}.autoNodePanel summary{cursor:pointer;font-weight:bold;color:#ead092}.autoNodePanel label{display:block;margin-top:9px;font-size:12px}.autoNodePanel select{display:block;width:100%;min-width:0;padding:8px;background:#12271f;color:#eee2bd;border:1px solid #6b7954;border-radius:6px}.autoNodePanel button{padding:9px;margin:5px 3px 0 0;min-height:36px}.autoNodePanel small{display:block;line-height:1.7;color:#c2cdb2}.autoNodeRoute{max-height:110px;overflow:auto;margin:8px 0;font-size:12px}.autoRoute .nodebody{stroke:#61e5df!important;stroke-width:4px!important}.autoRouteEdge{stroke:#61e5df!important;stroke-width:4px!important}#petAutoToggle{border:1px solid #bfa35d;background:#132b22e8;color:#e6d39d;border-radius:8px;min-height:30px;padding:4px 10px;font:inherit;font-size:12px;pointer-events:auto}#petAutoToggle[aria-pressed="true"]{background:#2d5736;color:#e4ffcf;box-shadow:0 0 10px #97e9a536}
+`;document.head.appendChild(style);
+let draft=null,expanded=false,last='',draftGame=null;
+const status=a=>a.status==='complete'?'ถึงปลายทางแล้ว · หยุดอัตโนมัติ':a.status==='blocked'?'หยุด: ทางเชื่อมไม่พร้อม กรุณาตั้งใหม่':a.enabled?'เปิดอยู่ · รอแต้มเพื่ออัปจุดถัดไป':'ปิดอยู่';
+function renderAuto(){
+ const a=game.autoNodes;if(!a)return;if(!draft||draftGame!==game){draftGame=game;draft={branch:a.branch,start:a.start,end:a.end};}
+ const plan=GW.planAutoNodes(game,draft.branch,draft.start,draft.end),ns=NODES.filter(n=>n.branch===draft.branch),options=value=>ns.map(n=>'<option value="'+n.id+'" '+(n.id===value?'selected':'')+'>'+(n.tier+1)+'. '+esc(n.name)+(game.has(n.id)?' ◆':'')+'</option>').join('');
+ const box=document.createElement('details');box.className='autoNodePanel';box.id='autoNodePanel';box.open=expanded;box.innerHTML='<summary>✦ Auto Node · '+status(a)+'</summary><label>สายที่จะอัป<select id="autoNodeBranch">'+BRANCHES.map(b=>'<option value="'+b.id+'" '+(b.id===draft.branch?'selected':'')+'>'+esc(b.th)+'</option>').join('')+'</select></label><label>ต้นทาง<select id="autoNodeStart">'+options(draft.start)+'</select></label><label>ปลายทางที่จะหยุด<select id="autoNodeEnd">'+options(draft.end)+'</select></label><button id="autoUseStart">ใช้จุดที่เลือกเป็นต้นทาง</button><button id="autoUseEnd">ใช้จุดที่เลือกเป็นปลายทาง</button><small>ใช้แต้ม Node เท่านั้น · รวมจุดบังคับก่อนต้นทาง · เลือกทางเชื่อมที่สั้นที่สุด · ไม่อัปทุกแขนงในสาย</small><div class="autoNodeRoute">'+(plan.error?esc(plan.error):plan.order.length?'ยังต้องใช้ '+plan.order.length+' แต้ม<br>'+plan.order.map(id=>esc(NODES.find(n=>n.id===id).name)).join(' → '):'จุดทั้งหมดในเส้นทางนี้อัปแล้ว')+'</div><button id="autoNodeEnable" '+(plan.error||game.ended?'disabled':'')+'>เปิดใช้เส้นทางนี้</button><button id="autoNodeDisable" '+(!a.enabled?'disabled':'')+'>ปิด Auto Node</button><small id="autoNodeStatus">'+status(a)+'</small>';
+ $('nodedetail').prepend(box);box.ontoggle=()=>expanded=box.open;
+ for(const[key,id]of [['branch','autoNodeBranch'],['start','autoNodeStart'],['end','autoNodeEnd']])$(id).onchange=e=>{draft[key]=e.target.value;if(key==='branch'){const b=BRANCHES.find(b=>b.id===draft.branch);draft.start=b.nodes[0][0];draft.end=b.nodes[b.nodes.length-1][0];}renderTree();};
+ for(const[key,id]of [['start','autoUseStart'],['end','autoUseEnd']])$(id).onclick=()=>{const n=NODES.find(n=>n.id===selectedNode);if(n.branch!==draft.branch){draft.branch=n.branch;draft.start=BRANCHES.find(b=>b.id===n.branch).nodes[0][0];draft.end=n.id;}draft[key]=n.id;renderTree();};
+ $('autoNodeEnable').onclick=()=>{game.configureAutoNodes(draft.branch,draft.start,draft.end);renderTree();ui(true);};$('autoNodeDisable').onclick=()=>{a.enabled=false;a.status='off';renderTree();};
+ const route=new Set(plan.order);for(const el of $('constellation').querySelectorAll('[data-node]'))el.classList.toggle('autoRoute',route.has(el.dataset.node));for(const el of $('constellation').querySelectorAll('[data-from]'))el.classList.toggle('autoRouteEdge',route.has(el.dataset.to)&&(route.has(el.dataset.from)||game.has(el.dataset.from)));
+}
+const previousTree=renderTree;renderTree=function(...args){previousTree(...args);renderAuto();};
+const toggle=document.createElement('button');toggle.id='petAutoToggle';toggle.title='ใช้สกิลเมื่อมีมอนในสนามและคูลดาวน์พร้อม · เวฟละไม่เกินหนึ่งครั้ง';$('petCast').after(toggle);
+let preference=false;try{preference=localStorage.getItem('gemward.petAuto')==='true';}catch{}game.petAuto=preference;
+toggle.onclick=()=>{game.petAuto=!game.petAuto;try{localStorage.setItem('gemward.petAuto',String(game.petAuto));}catch{}ui();};
+const previousReset=reset;reset=function(...args){previousReset(...args);draft=null;last='';try{game.petAuto=localStorage.getItem('gemward.petAuto')==='true';}catch{}ui();};
+const previousUI=ui;ui=function(...args){previousUI(...args);toggle.textContent='สกิลอัตโนมัติ '+(game.petAuto?'เปิด':'ปิด');toggle.setAttribute('aria-pressed',String(!!game.petAuto));const key=game.nodes.size+':'+game.points+':'+game.autoNodes?.status+':'+game.autoNodes?.enabled;if($('treemodal').classList.contains('show')&&key!==last){last=key;renderTree();}};ui();
 })();
 </script></body></html>
 
