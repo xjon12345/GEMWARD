@@ -2680,6 +2680,68 @@ $('copyCreatedCode').onclick=async()=>{try{await navigator.clipboard.writeText($
     +'@media(prefers-reduced-motion:reduce){.gw-gold-pulse,.gw-lives-hit{animation:none}}';
   document.head.appendChild(css);
 })();
+</script><script>/* v48 login-first entry: the account hub opens before play, with a one-tap Guest option.
+   Players who already have a saved account on this device go straight in. UI only. */
+(()=>{
+  'use strict';
+  const guest=$('accountGuest'),form=$('accountForm'),closeBtn=$('closeAccount'),G=window.GEMWARD_GUEST;
+  if(!guest||!form||!G||typeof openAccount!=='function')return;
+  let gate=false;
+  const divider=document.createElement('div');divider.className='gwGateOr';divider.innerHTML='<span>หรือ</span>';
+  form.after(divider,guest);
+  const enter=document.createElement('button');enter.type='button';enter.className='goldbtn full';enter.id='gwGateEnter';enter.textContent='เข้าสู่เกม →';enter.hidden=true;
+  guest.before(enter);
+  const defaultGuestText=guest.textContent,closeDefault=closeBtn.onclick;
+  function finish(){gate=false;guest.textContent=defaultGuestText;closeBtn.onclick=closeDefault;enter.hidden=true;divider.hidden=false;$('accountModal').classList.remove('gwGate');openModal('helpmode');}
+  function playGuest(){if(accountBusy)return;G.enter(false);if(gate)finish();}
+  guest.onclick=()=>{const wasGate=gate;G.enter(onlineWantStart);if(wasGate)finish();};
+  enter.onclick=()=>{if(accountBusy)return;closeModal('accountModal');finish();};
+  const renderBefore=renderAccount;
+  renderAccount=function(...args){
+    const r=renderBefore.apply(this,args);
+    if(gate){
+      const signedIn=!!accountInfo;
+      guest.hidden=signedIn;divider.hidden=signedIn;enter.hidden=!signedIn;
+      if(!signedIn)$('accountStatus').textContent='เข้าสู่ระบบเพื่อบันทึกคะแนนและอันดับ หรือเล่นแบบ Guest ได้ทันที';
+    }else divider.hidden=guest.hidden;
+    return r;
+  };
+  const savedPlayer=typeof onlinePlayer!=='undefined'&&onlinePlayer;
+  if(!savedPlayer){
+    gate=true;
+    closeModal('helpmode');
+    guest.textContent='▶ เล่นแบบ Guest · ไม่ต้องใช้รหัส (ไม่บันทึกคะแนน)';
+    closeBtn.onclick=playGuest;
+    $('accountModal').classList.add('gwGate');
+    Promise.resolve(openAccount()).catch(()=>{}).finally(()=>renderAccount());
+  }
+  /* Login art: logo banner on top, emblem glowing behind the form. */
+  const box=document.querySelector('#accountModal .accountBox');
+  if(box&&!box.querySelector('.gwLoginHero')){
+    const hero=document.createElement('div');hero.className='gwLoginHero';
+    hero.innerHTML='<img class="gwLoginLogo" src="assets/ui/login-logo.webp" alt="GEMWARD" width="900" height="450" decoding="async"><p class="gwLoginTag">ปกป้องหัวใจแห่งป่า · เข้าสู่ระบบเพื่อจารึกชื่อบนอันดับ</p>';
+    const crest=document.createElement('div');crest.className='gwLoginCrest';crest.setAttribute('aria-hidden','true');
+    box.prepend(crest,hero);box.classList.add('gwLoginBox');
+    hero.querySelector('img').onerror=function(){this.remove();};
+  }
+  const css=document.createElement('style');
+  css.textContent='.gwLoginBox{position:relative;isolation:isolate;background:radial-gradient(120% 70% at 50% 0%,#2f5a36 0%,#173322 45%,#0b1d16 100%)!important;box-shadow:0 0 0 1px #f3d58a33 inset,0 0 60px #2fe6a022,0 24px 90px #000d!important}'
+    +'.gwLoginBox>*:not(.gwLoginCrest){position:relative;z-index:1}'
+    +'.gwLoginCrest{position:absolute;z-index:0;left:50%;top:150px;width:min(440px,90%);aspect-ratio:1;transform:translateX(-50%);background:url(assets/ui/login-emblem.webp) center/contain no-repeat;opacity:.16;pointer-events:none;-webkit-mask-image:radial-gradient(circle,#000 38%,transparent 68%);mask-image:radial-gradient(circle,#000 38%,transparent 68%);animation:gwCrest 6s ease-in-out infinite}'
+    +'.gwLoginHero{text-align:center;margin:-4px 0 6px}.gwLoginLogo{display:block;width:min(100%,380px);height:auto;margin:0 auto;filter:drop-shadow(0 6px 14px #000a) drop-shadow(0 0 18px #2fe6a044);animation:gwLogoIn .7s cubic-bezier(.2,1.4,.4,1) both}'
+    +'.gwLoginTag{margin:2px 0 0;font-size:12.5px;letter-spacing:.02em;color:#d9c793}'
+    +'.gwLoginBox header{border-bottom-color:#c9a96155}.gwLoginBox header h2{font-size:20px}'
+    +'.gwLoginBox #closeAccount{position:absolute;top:12px;right:12px;z-index:3}'
+    +'.gwLoginBox input{background:#06140fcc!important;border-color:#c9a96188!important}.gwLoginBox input:focus{outline:none;border-color:#f2d68a!important;box-shadow:0 0 0 3px #2fe6a033}'
+    +'.gwLoginBox #accountSubmit{background:linear-gradient(180deg,#f0d38b,#b98f45)!important;color:#1e1608!important;font-weight:700;box-shadow:0 4px 18px #e8c46a44}'
+    +'#accountReply:empty{display:none}#accountModal.gwGate #accountRedeem,#accountModal.gwGate .accountNote,#accountModal.gwGate .accountBox>button:not([id]){display:none!important}'
+    +'@keyframes gwLogoIn{from{opacity:0;transform:translateY(-8px) scale(.92)}to{opacity:1;transform:none}}@keyframes gwCrest{0%,100%{opacity:.13}50%{opacity:.2}}'
+    +'@media(max-width:520px){.gwLoginCrest{top:120px}.gwLoginLogo{width:min(100%,300px)}}'
+    +'@media(prefers-reduced-motion:reduce){.gwLoginLogo,.gwLoginCrest{animation:none}}'
+    +'.gwGateOr{display:flex;align-items:center;gap:10px;margin:14px 0 4px;color:#cdbb8a;font-size:13px}.gwGateOr:before,.gwGateOr:after{content:"";flex:1;height:1px;background:linear-gradient(90deg,transparent,#c9a96166,transparent)}.gwGateOr[hidden]{display:none}'
+    +'#accountModal.gwGate #accountGuest{background:transparent;color:#f2dfa6;border:1px solid #c9a961aa}#accountModal.gwGate #accountGuest:hover{background:#c9a96122}';
+  document.head.appendChild(css);
+})();
 </script></body></html>
 
 
