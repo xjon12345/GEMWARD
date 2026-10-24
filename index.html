@@ -2553,6 +2553,133 @@ entry.onclick=async()=>{closeModal('ownerConsole');openModal('adminCodesModal');
 $('adminCodeForm').onsubmit=async e=>{e.preventDefault();if(busy)return;const code=$('adminCodeText').value.trim(),eggs=Number($('adminCodeEggs').value),key=code+':'+eggs;if(!pending||pending.key!==key)pending={key,operationId:crypto.randomUUID()};busy=true;$('adminCodeCreate').disabled=true;try{const d=await auditOwnerRequest('redeem/create',{code,eggs,operationId:pending.operationId});pending=null;$('createdCode').textContent=d.code;$('adminCodeResult').hidden=false;await list();$('adminCodesReply').textContent='สร้างสำเร็จ · '+d.eggs+' ฟองต่อไอดี · ส่งโค้ดนี้ให้ผู้เล่นกรอกใน Redeem';}catch(error){$('adminCodesReply').textContent=error.message;}finally{busy=false;$('adminCodeCreate').disabled=false;}};
 $('copyCreatedCode').onclick=async()=>{try{await navigator.clipboard.writeText($('createdCode').textContent);$('adminCodesReply').textContent='คัดลอกโค้ดแล้ว';}catch{$('adminCodesReply').textContent='เลือกข้อความโค้ดแล้วคัดลอกได้เลย';}};
 })();
+</script><script>/* v48 combat feedback: gold pop-ups, leak warning, boss-kill impact, screen shake and SFX.
+   Presentation only. It observes the simulation after each step and never writes game state,
+   never calls game.random(), and never changes time scale, so seeded runs, online checkpoints
+   and score audits are unaffected. Shake and flashes follow the existing tower-motion setting. */
+(()=>{
+  'use strict';
+  if(window.GEMWARD_FEEL_V48)return;window.GEMWARD_FEEL_V48=true;
+  const host=Object.getPrototypeOf(game),innerStep=host.step;
+  if(typeof innerStep!=='function'||typeof draw!=='function')return;
+  const CORE={x:892,y:440},MAX_POPS=48,MAX_RINGS=8;
+  const pops=[],rings=[],alive=[],died=[];
+  let trauma=0,leakFlash=0,bossFlash=0,lastTime=0,lastTick=0,shakeClock=0;
+  const motionOK=()=>typeof towerMotionEnabled==='function'?towerMotionEnabled():!(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const isBoss=e=>e.kind==='boss';
+  const pulseAt={};
+  const fmt=n=>Math.round(n).toLocaleString('en-US');
+
+  function pop(x,y,text,color,size=13,rise=26,life=.9){
+    if(pops.length>=MAX_POPS)pops.shift();
+    pops.push({x:x+(Math.random()-.5)*10,y:y-18,text,color,size,rise,life,max:life});
+  }
+  function shake(amount){if(motionOK())trauma=Math.min(1,trauma+amount);}
+
+  /* --- Sound: tiny synthesized cues on the existing sound toggle, rate-limited. --- */
+  function audio(){if(!sound)return null;try{ac??=new(window.AudioContext||window.webkitAudioContext)();if(ac.state==='suspended')ac.resume();return ac;}catch{return null;}}
+  function tone(a,{type='sine',f0,f1,dur,gain,at=0}){
+    const t=a.currentTime+at,o=a.createOscillator(),g=a.createGain();
+    o.type=type;o.frequency.setValueAtTime(f0,t);if(f1)o.frequency.exponentialRampToValueAtTime(f1,t+dur);
+    g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(gain,t+.008);g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    o.connect(g).connect(a.destination);o.start(t);o.stop(t+dur+.02);
+  }
+  function sfxKill(){const now=performance.now();if(now-lastTick<70)return;lastTick=now;const a=audio();if(!a)return;try{const f=980+Math.random()*320;tone(a,{type:'triangle',f0:f,f1:f*1.5,dur:.07,gain:.016});}catch{}}
+  function sfxBoss(){const a=audio();if(!a)return;try{tone(a,{f0:140,f1:38,dur:.55,gain:.09});tone(a,{type:'triangle',f0:660,f1:990,dur:.25,gain:.03,at:.05});tone(a,{type:'triangle',f0:990,f1:1320,dur:.3,gain:.025,at:.16});}catch{}}
+  function sfxLeak(){const a=audio();if(!a)return;try{tone(a,{type:'square',f0:150,f1:70,dur:.22,gain:.025});tone(a,{f0:90,f1:50,dur:.3,gain:.05});}catch{}}
+  function sfxGold(){const a=audio();if(!a)return;try{tone(a,{type:'triangle',f0:1180,dur:.09,gain:.02});tone(a,{type:'triangle',f0:1570,dur:.14,gain:.02,at:.07});}catch{}}
+
+  function hudPulse(id,cls){const now=performance.now();if(now-(pulseAt[id]||0)<180)return;pulseAt[id]=now;const el=$(id);if(!el)return;const box=el.closest('div')||el;box.classList.remove(cls);void box.offsetWidth;box.classList.add(cls);}
+
+  /* --- Observe each simulation step (read-only). --- */
+  host.step=function(dt){
+    if(this!==game)return innerStep.call(this,dt);
+    alive.length=0;for(const e of this.enemies)if(!e.dead)alive.push(e);
+    const gold0=this.gold,lives0=this.lives,running0=this.running;
+    const result=innerStep.call(this,dt);
+    try{
+      died.length=0;let rewardSum=0;
+      for(const e of alive)if(e.dead&&e.hp<=0){died.push(e);rewardSum+=e.reward||0;}
+      if(died.length){
+        // Show the gold actually earned when it can be attributed; otherwise each enemy's bounty.
+        const delta=this.gold-gold0,exact=running0===this.running&&delta>=rewardSum&&rewardSum>0;
+        let left=delta;
+        died.forEach((e,k)=>{
+          const share=exact?(k===died.length-1?left:Math.round(delta*(e.reward||0)/rewardSum)):(e.reward||0);
+          if(exact)left-=share;
+          if(isBoss(e)){
+            pop(e.x,e.y-20,'+'+fmt(share)+' ◈','#ffe08a',22,40,1.6);
+            if(rings.length<MAX_RINGS)rings.push({x:e.x,y:e.y,life:.7,max:.7});
+            shake(.75);if(motionOK())bossFlash=.18;sfxBoss();
+          }else if(share>0){pop(e.x,e.y,'+'+fmt(share),'#f6d77c');sfxKill();}
+        });
+        hudPulse('gold','gw-gold-pulse');
+      }
+      const lost=lives0-this.lives;
+      if(lost>0){
+        pop(CORE.x,CORE.y,'−'+lost+' ♥','#ff8a8a',18,34,1.2);
+        shake(Math.min(.55,.25+.08*lost));if(motionOK())leakFlash=Math.min(.6,leakFlash+.35);
+        sfxLeak();hudPulse('lives','gw-lives-hit');
+      }
+      if(running0&&!this.running&&!this.ended&&this.gold>gold0+rewardSum){
+        pop(480,250,'WAVE BONUS +'+fmt(this.gold-gold0-rewardSum)+' ◈','#ffe9a8',20,30,1.8);sfxGold();
+      }
+    }catch{}
+    return result;
+  };
+
+  /* --- Render: shake wraps the whole scene; feedback layers draw on top. --- */
+  const sceneDraw=draw;
+  draw=function(time){
+    const dt=lastTime?Math.min(.1,(time-lastTime)/1000):0;lastTime=time;
+    const live=!paused,step=live?dt:0;
+    trauma=Math.max(0,trauma-1.5*dt);leakFlash=Math.max(0,leakFlash-1.4*dt);bossFlash=Math.max(0,bossFlash-dt);
+    const s=motionOK()&&terrain?trauma*trauma:0;
+    if(s>0){
+      shakeClock+=dt*32;
+      const ox=9*s*Math.sin(shakeClock*1.7),oy=6*s*Math.sin(shakeClock*2.3+1),k=1+Math.max(Math.abs(ox)/480,Math.abs(oy)/300)*1.15;
+      ctx.save();ctx.translate(480,300);ctx.scale(k,k);ctx.translate(-480+ox,-300+oy);
+      try{sceneDraw(time);}finally{ctx.restore();}
+    }else sceneDraw(time);
+    try{drawFeedback(step);}catch{}
+  };
+
+  const easeOutCubic=t=>1-Math.pow(1-t,3);
+  const easeOutBack=t=>{const c=1.7;return 1+(c+1)*Math.pow(t-1,3)+c*Math.pow(t-1,2);};
+  function drawFeedback(step){
+    ctx.save();
+    if(leakFlash>0){
+      const g=ctx.createRadialGradient(480,300,230,480,300,600);
+      g.addColorStop(0,'rgba(255,60,70,0)');g.addColorStop(1,'rgba(255,60,70,'+(leakFlash*.55).toFixed(3)+')');
+      ctx.fillStyle=g;ctx.fillRect(0,0,960,600);
+    }
+    if(bossFlash>0){ctx.fillStyle='rgba(255,246,214,'+(bossFlash*1.1).toFixed(3)+')';ctx.fillRect(0,0,960,600);}
+    for(let i=rings.length-1;i>=0;i--){
+      const r=rings[i];r.life-=step;if(r.life<=0){rings.splice(i,1);continue;}
+      const t=1-r.life/r.max,rad=12+150*easeOutCubic(t);
+      ctx.globalAlpha=(1-t)*.9;ctx.strokeStyle='#ffe3a0';ctx.lineWidth=6*(1-t)+1;
+      ctx.beginPath();ctx.ellipse(r.x,r.y,rad,rad*.55,0,0,Math.PI*2);ctx.stroke();
+      for(let n=0;n<14;n++){const a=n/14*Math.PI*2,d=rad*(.75+.25*Math.sin(n*3.1));ctx.fillStyle=n%2?'#fff4cf':'#ffcf6b';ctx.fillRect(r.x+Math.cos(a)*d-2,r.y+Math.sin(a)*d*.55-2,4,4);}
+    }
+    ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';
+    for(let i=pops.length-1;i>=0;i--){
+      const p=pops[i];p.life-=step;if(p.life<=0){pops.splice(i,1);continue;}
+      const t=1-p.life/p.max,scale=t<.18?.6+.4*easeOutBack(t/.18):1,y=p.y-p.rise*easeOutCubic(t);
+      ctx.globalAlpha=t>.6?1-(t-.6)/.4:1;
+      ctx.font='700 '+Math.round(p.size*scale)+'px "Chakra Petch","Noto Sans Thai",sans-serif';
+      ctx.lineWidth=Math.max(3,p.size*.28);ctx.strokeStyle='rgba(16,22,18,.85)';ctx.strokeText(p.text,p.x,y);
+      ctx.fillStyle=p.color;ctx.fillText(p.text,p.x,y);
+    }
+    ctx.restore();
+  }
+
+  const css=document.createElement('style');
+  css.textContent='@keyframes gwGoldPulse{0%{transform:scale(1)}35%{transform:scale(1.12);filter:brightness(1.35)}100%{transform:scale(1)}}'
+    +'@keyframes gwLivesHit{0%,100%{transform:translateX(0)}20%{transform:translateX(-4px);filter:drop-shadow(0 0 8px #ff4d5e)}45%{transform:translateX(4px)}70%{transform:translateX(-2px)}}'
+    +'.gw-gold-pulse{animation:gwGoldPulse .32s ease-out}.gw-lives-hit{animation:gwLivesHit .42s ease-out}'
+    +'@media(prefers-reduced-motion:reduce){.gw-gold-pulse,.gw-lives-hit{animation:none}}';
+  document.head.appendChild(css);
+})();
 </script></body></html>
 
 
